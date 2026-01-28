@@ -60,9 +60,11 @@ const App: React.FC = () => {
       return null;
     }
     const questions = getCurrentQuestions(stateToUse.currentRound);
-    // Cycle through questions based on questions answered
-    const questionIndex = stateToUse.questionsAnswered % questions.length;
-    return questions[questionIndex];
+    // Use currentQuestionIndex to get the question
+    if (stateToUse.currentQuestionIndex < questions.length) {
+      return questions[stateToUse.currentQuestionIndex];
+    }
+    return null;
   };
 
   // Get total questions per round
@@ -356,7 +358,9 @@ const App: React.FC = () => {
           const nextActiveIndex = (currentActiveIndex + 1) % activeGroups.length;
           nextGroupIndex = activeGroups[nextActiveIndex].id;
           
-          // Question index cycles through questions array
+          // Calculate question index: each group gets questions in round-robin order
+          // questionsAnswered tells us which question number we're on (0, 1, 2, ...)
+          // We cycle through questions array based on total questions answered
           const questions = getCurrentQuestions(prev.currentRound);
           nextQuestionIndex = questionsAnswered % questions.length;
         }
