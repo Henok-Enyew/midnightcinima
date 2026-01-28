@@ -113,9 +113,9 @@ const App: React.FC = () => {
       
       if (!currentQuestion) return prev;
 
-      // Add points for correct answer
+      // Add points for correct answer (always 1 point per question)
       if (type === 'correct') {
-        newGroups[prev.currentGroupIndex].score += currentQuestion.points;
+        newGroups[prev.currentGroupIndex].score += 1;
       }
 
       // Check if tie is broken during tie-breaker
@@ -375,10 +375,18 @@ const App: React.FC = () => {
         // Continue tie-breaker - rotate only between tied groups
         const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
         
-        // Rotate between tied groups only
-        const currentTiedIndex = tiedGroups.findIndex(g => g.id === prev.currentGroupIndex);
-        const nextTiedIndex = (currentTiedIndex + 1) % tiedGroups.length;
-        nextGroupIndex = tiedGroups[nextTiedIndex].id;
+        // Rotate between tied groups only - ensure proper round-robin
+        if (tiedGroups.length > 0) {
+          const currentTiedIndex = tiedGroups.findIndex(g => g.id === prev.currentGroupIndex);
+          if (currentTiedIndex >= 0) {
+            // Current group is in tied groups - move to next
+            const nextTiedIndex = (currentTiedIndex + 1) % tiedGroups.length;
+            nextGroupIndex = tiedGroups[nextTiedIndex].id;
+          } else {
+            // Current group not found in tied groups - start with first
+            nextGroupIndex = tiedGroups[0].id;
+          }
+        }
       } else {
         // Normal flow - increment questionsAnswered when moving to next question
         questionsAnswered = prev.questionsAnswered + 1;
@@ -439,30 +447,53 @@ const App: React.FC = () => {
             tieBreakerIndex = result.tieBreakerIndex;
             tiedGroupIds = result.tiedGroupIds;
 
-            if (nextPhase === GamePhase.ELIMINATION || nextPhase === GamePhase.WINNER) {
-              return {
-                ...prev,
-                groups: newGroups,
-                phase: nextPhase,
-                lastEliminatedGroupId: lastEliminatedId,
-                questionsAnswered,
-                tieBreakerQuestions,
-                tieBreakerIndex,
-                tiedGroupIds,
-                isWinnerTieBreaker: result.isWinnerTieBreaker,
-              };
-            }
+          if (nextPhase === GamePhase.ELIMINATION || nextPhase === GamePhase.WINNER) {
+            return {
+              ...prev,
+              groups: newGroups,
+              phase: nextPhase,
+              lastEliminatedGroupId: lastEliminatedId,
+              questionsAnswered,
+              tieBreakerQuestions,
+              tieBreakerIndex,
+              tiedGroupIds,
+              isWinnerTieBreaker: result.isWinnerTieBreaker,
+            };
+          }
 
-            // Move to next round
-            if (prev.currentRound === GameRound.ROUND_1) {
-              nextRound = GameRound.ROUND_2;
-              nextQuestionIndex = 0;
-              questionsAnswered = 0;
-            } else if (prev.currentRound === GameRound.ROUND_2) {
-              nextRound = GameRound.ROUND_3;
-              nextQuestionIndex = 0;
-              questionsAnswered = 0;
+          // If tie-breaker starts, set currentGroupIndex to first tied group
+          if (nextPhase === GamePhase.TIE_BREAKER && tiedGroupIds.length > 0) {
+            const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
+            if (tiedGroups.length > 0) {
+              nextGroupIndex = tiedGroups[0].id;
             }
+            return {
+              ...prev,
+              groups: newGroups,
+              phase: nextPhase,
+              currentGroupIndex: nextGroupIndex,
+              questionsAnswered,
+              tieBreakerQuestions,
+              tieBreakerIndex,
+              tiedGroupIds,
+              isWinnerTieBreaker: result.isWinnerTieBreaker,
+              timer: INITIAL_TIMER,
+              isTimerActive: true,
+              isQuestionResolved: false,
+              lastDecision: null,
+            };
+          }
+
+          // Move to next round
+          if (prev.currentRound === GameRound.ROUND_1) {
+            nextRound = GameRound.ROUND_2;
+            nextQuestionIndex = 0;
+            questionsAnswered = 0;
+          } else if (prev.currentRound === GameRound.ROUND_2) {
+            nextRound = GameRound.ROUND_3;
+            nextQuestionIndex = 0;
+            questionsAnswered = 0;
+          }
           }
 
       // Find first active group for next round
