@@ -233,38 +233,40 @@ const App: React.FC = () => {
 
   // Handle winner determination at end of Round 3
   const handleWinnerDetermination = (groups: Group[]): { groups: Group[], winnerId: number | null, phase: GamePhase, tieBreakerQuestions: Question[], tieBreakerIndex: number, isRandomElimination: boolean, tiedGroupIds: number[], isWinnerTieBreaker: boolean } => {
-    const activeGroups = groups.filter(g => !g.isEliminated);
+    // Sort active groups by ID to ensure consistent ordering
+    const activeGroups = groups.filter(g => !g.isEliminated).sort((a, b) => a.id - b.id);
     
     if (activeGroups.length === 1) {
       return { groups, winnerId: activeGroups[0].id, phase: GamePhase.WINNER, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [], isWinnerTieBreaker: false };
     }
 
+    // Find the highest score among active groups
     const highestScore = Math.max(...activeGroups.map(g => g.score));
+    // Filter groups with the highest score (sorted by ID)
     const winners = activeGroups.filter(g => g.score === highestScore);
 
     if (winners.length === 1) {
       // Single highest score - winner
       return { groups, winnerId: winners[0].id, phase: GamePhase.WINNER, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [], isWinnerTieBreaker: false };
     } else {
-      // Tie for highest score - start tie-breaker for winner
-      const roundData = getCurrentRoundData(GameRound.ROUND_3);
-      const reserveQuestions = [...roundData.reserves];
-      const tiedIds = winners.map(w => w.id);
+      // Tie for highest score - go directly to random selection
+      const tiedIds = winners.map(w => w.id).sort((a, b) => a - b); // Sort IDs for consistency
       
-      return { groups, winnerId: null, phase: GamePhase.TIE_BREAKER, tieBreakerQuestions: reserveQuestions, tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: tiedIds, isWinnerTieBreaker: true };
+      return { groups, winnerId: null, phase: GamePhase.RANDOM_SELECTION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: tiedIds, isWinnerTieBreaker: true };
     }
   };
 
   // Handle elimination at end of round
   const handleRoundEndElimination = (groups: Group[], round: GameRound): { groups: Group[], eliminatedId: number | null, phase: GamePhase, tieBreakerQuestions: Question[], tieBreakerIndex: number, isRandomElimination: boolean, tiedGroupIds: number[], isWinnerTieBreaker: boolean } => {
-    const activeGroups = groups.filter(g => !g.isEliminated);
+    // Sort active groups by ID for consistent ordering
+    const activeGroups = groups.filter(g => !g.isEliminated).sort((a, b) => a.id - b.id);
     
     if (activeGroups.length <= 1) {
       return { groups, eliminatedId: null, phase: GamePhase.WINNER, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [], isWinnerTieBreaker: false };
     }
 
     const lowestScore = Math.min(...activeGroups.map(g => g.score));
-    const candidates = activeGroups.filter(g => g.score === lowestScore);
+    const candidates = activeGroups.filter(g => g.score === lowestScore).sort((a, b) => a.id - b.id);
 
     if (candidates.length === 1) {
       // Single lowest score - eliminate
@@ -273,19 +275,17 @@ const App: React.FC = () => {
       );
       return { groups: newGroups, eliminatedId: candidates[0].id, phase: GamePhase.ELIMINATION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [], isWinnerTieBreaker: false };
     } else {
-      // Tie - start sudden death - only tied groups participate
-      const roundData = getCurrentRoundData(round);
-      const reserveQuestions = [...roundData.reserves];
-      const tiedIds = candidates.map(c => c.id);
+      // Tie - go directly to random selection
+      const tiedIds = candidates.map(c => c.id).sort((a, b) => a - b); // Sort IDs for consistency
       
-      return { groups, eliminatedId: null, phase: GamePhase.TIE_BREAKER, tieBreakerQuestions: reserveQuestions, tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: tiedIds, isWinnerTieBreaker: false };
+      return { groups, eliminatedId: null, phase: GamePhase.RANDOM_SELECTION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: tiedIds, isWinnerTieBreaker: false };
     }
   };
 
   // Handle tie-breaker next
   const handleTieBreakerNext = (groups: Group[], tieBreakerIndex: number, tieBreakerQuestions: Question[], tiedGroupIds: number[], isWinnerTieBreaker: boolean): { groups: Group[], eliminatedId: number | null, winnerId: number | null, phase: GamePhase, tieBreakerQuestions: Question[], tieBreakerIndex: number, isRandomElimination: boolean, tiedGroupIds: number[], isWinnerTieBreaker: boolean } => {
-    // Only consider tied groups
-    const tiedGroups = groups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
+    // Only consider tied groups - sort by ID for consistent ordering
+    const tiedGroups = groups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated).sort((a, b) => a.id - b.id);
     
     if (tiedGroups.length <= 1) {
       if (isWinnerTieBreaker) {
@@ -297,9 +297,9 @@ const App: React.FC = () => {
     }
 
     if (isWinnerTieBreaker) {
-      // For winner determination, find highest score
+      // For winner determination, find highest score among tied groups
       const highestScore = Math.max(...tiedGroups.map(g => g.score));
-      const winners = tiedGroups.filter(g => g.score === highestScore);
+      const winners = tiedGroups.filter(g => g.score === highestScore).sort((a, b) => a.id - b.id);
 
       if (winners.length === 1) {
         // Single highest score - winner determined
@@ -312,9 +312,9 @@ const App: React.FC = () => {
         return { groups, eliminatedId: null, winnerId: null, phase: GamePhase.RANDOM_SELECTION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds, isWinnerTieBreaker: true };
       }
     } else {
-      // For elimination, find lowest score
+      // For elimination, find lowest score among tied groups
       const lowestScore = Math.min(...tiedGroups.map(g => g.score));
-      const candidates = tiedGroups.filter(g => g.score === lowestScore);
+      const candidates = tiedGroups.filter(g => g.score === lowestScore).sort((a, b) => a.id - b.id);
 
       if (candidates.length === 1) {
         // Single lowest score - eliminate
@@ -373,7 +373,8 @@ const App: React.FC = () => {
         }
 
         // Continue tie-breaker - rotate only between tied groups
-        const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
+        // Sort tied groups by ID for consistent ordering
+        const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated).sort((a, b) => a.id - b.id);
         
         // Rotate between tied groups only - ensure proper round-robin
         if (tiedGroups.length > 0) {
@@ -383,7 +384,7 @@ const App: React.FC = () => {
             const nextTiedIndex = (currentTiedIndex + 1) % tiedGroups.length;
             nextGroupIndex = tiedGroups[nextTiedIndex].id;
           } else {
-            // Current group not found in tied groups - start with first
+            // Current group not found in tied groups - start with first (lowest ID)
             nextGroupIndex = tiedGroups[0].id;
           }
         }
@@ -415,26 +416,17 @@ const App: React.FC = () => {
                 tiedGroupIds,
                 isWinnerTieBreaker,
               };
-            } else if (nextPhase === GamePhase.TIE_BREAKER) {
-              // Start winner tie-breaker - find first tied group
-              const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
-              if (tiedGroups.length > 0) {
-                nextGroupIndex = tiedGroups[0].id;
-              }
+            } else if (nextPhase === GamePhase.RANDOM_SELECTION) {
+              // Go directly to random selection for winner
               return {
                 ...prev,
                 groups: newGroups,
                 phase: nextPhase,
-                currentGroupIndex: nextGroupIndex,
                 questionsAnswered,
-                tieBreakerQuestions,
-                tieBreakerIndex,
+                tieBreakerQuestions: [],
+                tieBreakerIndex: 0,
                 tiedGroupIds,
                 isWinnerTieBreaker,
-                timer: INITIAL_TIMER,
-                isTimerActive: true,
-                isQuestionResolved: false,
-                lastDecision: null,
               };
             }
           } else {
@@ -461,26 +453,17 @@ const App: React.FC = () => {
             };
           }
 
-          // If tie-breaker starts, set currentGroupIndex to first tied group
-          if (nextPhase === GamePhase.TIE_BREAKER && tiedGroupIds.length > 0) {
-            const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
-            if (tiedGroups.length > 0) {
-              nextGroupIndex = tiedGroups[0].id;
-            }
+          // If random selection needed, go directly to it
+          if (nextPhase === GamePhase.RANDOM_SELECTION && tiedGroupIds.length > 0) {
             return {
               ...prev,
               groups: newGroups,
               phase: nextPhase,
-              currentGroupIndex: nextGroupIndex,
               questionsAnswered,
-              tieBreakerQuestions,
-              tieBreakerIndex,
+              tieBreakerQuestions: [],
+              tieBreakerIndex: 0,
               tiedGroupIds,
               isWinnerTieBreaker: result.isWinnerTieBreaker,
-              timer: INITIAL_TIMER,
-              isTimerActive: true,
-              isQuestionResolved: false,
-              lastDecision: null,
             };
           }
 
@@ -496,15 +479,16 @@ const App: React.FC = () => {
           }
           }
 
-      // Find first active group for next round
-      const activeGroups = newGroups.filter(g => !g.isEliminated);
+      // Find first active group for next round - sort by ID to ensure consistent ordering
+      const activeGroups = newGroups.filter(g => !g.isEliminated).sort((a, b) => a.id - b.id);
       if (activeGroups.length > 0) {
-        nextGroupIndex = activeGroups[0].id;
+        nextGroupIndex = activeGroups[0].id; // Always start with lowest ID group
         nextQuestionIndex = 0; // Start from first question of new round
       }
         } else {
           // Continue current round - find next active group (round-robin)
-          const activeGroups = newGroups.filter(g => !g.isEliminated);
+          // Sort active groups by ID for consistent ordering
+          const activeGroups = newGroups.filter(g => !g.isEliminated).sort((a, b) => a.id - b.id);
           const currentActiveIndex = activeGroups.findIndex(g => g.id === prev.currentGroupIndex);
           const nextActiveIndex = (currentActiveIndex + 1) % activeGroups.length;
           nextGroupIndex = activeGroups[nextActiveIndex].id;
@@ -546,7 +530,8 @@ const App: React.FC = () => {
 
   const resumeFromElimination = () => {
     setGameState(prev => {
-      const activeGroups = prev.groups.filter(g => !g.isEliminated);
+      // Sort active groups by ID to ensure consistent ordering - always start with lowest ID
+      const activeGroups = prev.groups.filter(g => !g.isEliminated).sort((a, b) => a.id - b.id);
       
       if (activeGroups.length === 1) {
         return {
@@ -572,7 +557,7 @@ const App: React.FC = () => {
         questionsAnswered = 0;
       }
 
-      // Find first active group
+      // Find first active group (lowest ID) - already sorted above
       const firstActiveGroup = activeGroups[0];
       nextQuestionIndex = 0; // Start from first question of new round
 

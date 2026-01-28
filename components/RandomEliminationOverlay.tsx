@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Group } from '../types';
 
 interface RandomEliminationOverlayProps {
@@ -9,71 +9,50 @@ interface RandomEliminationOverlayProps {
 }
 
 const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tiedGroups, onSelect, isWinnerSelection = false }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isSlowing, setIsSlowing] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const hasSelected = useRef(false);
+  const [countdown, setCountdown] = useState(5);
+  const onSelectRef = useRef(onSelect);
+  const tiedGroupsRef = useRef(tiedGroups);
+
+  // Keep refs updated
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+    tiedGroupsRef.current = tiedGroups;
+  }, [onSelect, tiedGroups]);
 
   useEffect(() => {
     if (tiedGroups.length === 0) return;
-    if (hasSelected.current) return; // Prevent multiple selections
 
-    let interval: NodeJS.Timeout;
-    let timeout: NodeJS.Timeout;
-    const startTime = Date.now();
-    const totalDuration = 5000; // 5 seconds total
-    const fastPhaseDuration = 3500; // Fast scrolling for 3.5 seconds
-    let currentSpeed = 50; // Start very fast
-    let slowingSet = false;
+    let countdownInterval: NodeJS.Timeout;
+    let selectionTimeout: NodeJS.Timeout;
 
-    const cycle = () => {
-      const elapsed = Date.now() - startTime;
-      
-      setCurrentIndex(prev => (prev + 1) % tiedGroups.length);
+    // Countdown from 5 to 0
+    countdownInterval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-      if (elapsed >= fastPhaseDuration && !slowingSet) {
-        // Start slowing down after 3.5 seconds
-        setIsSlowing(true);
-        slowingSet = true;
-        currentSpeed = 200; // Slower speed
+    // After exactly 5 seconds, select a random group and call onSelect
+    selectionTimeout = setTimeout(() => {
+      clearInterval(countdownInterval);
+      const groups = tiedGroupsRef.current;
+      if (groups.length > 0) {
+        const finalIndex = Math.floor(Math.random() * groups.length);
+        const selected = groups[finalIndex];
+        // Call onSelect immediately - this will change the phase and unmount this component
+        onSelectRef.current(selected);
       }
-
-      if (elapsed < totalDuration) {
-        // Continue cycling
-        interval = setTimeout(cycle, currentSpeed);
-      } else {
-        // Time's up - make final selection immediately
-        clearTimeout(interval);
-        hasSelected.current = true;
-        const finalIndex = Math.floor(Math.random() * tiedGroups.length);
-        setCurrentIndex(finalIndex);
-        setSelectedGroup(tiedGroups[finalIndex]);
-        
-        // Wait 1 second to show selection, then call onSelect
-        timeout = setTimeout(() => {
-          onSelect(tiedGroups[finalIndex]);
-        }, 1000);
-      }
-    };
-
-    // Start immediately
-    cycle();
-
-    // Safety timeout - ensure onSelect is called after max 6.5 seconds
-    const safetyTimeout = setTimeout(() => {
-      if (!hasSelected.current && tiedGroups.length > 0) {
-        hasSelected.current = true;
-        const finalIndex = Math.floor(Math.random() * tiedGroups.length);
-        onSelect(tiedGroups[finalIndex]);
-      }
-    }, 6500);
+    }, 5000);
 
     return () => {
-      if (interval) clearTimeout(interval);
-      if (timeout) clearTimeout(timeout);
-      clearTimeout(safetyTimeout);
+      if (countdownInterval) clearInterval(countdownInterval);
+      if (selectionTimeout) clearTimeout(selectionTimeout);
     };
-  }, [tiedGroups, onSelect]);
+  }, []); // Run only once on mount
 
   if (tiedGroups.length === 0) return null;
 
@@ -103,67 +82,27 @@ const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tie
           <div className="h-1 w-32 bg-[#d4af37] mx-auto"></div>
         </motion.div>
 
-        {/* Scrolling groups */}
-        <div className="relative h-64 overflow-hidden mb-8">
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <AnimatePresence mode="wait">
-              {tiedGroups.map((group, index) => {
-                const isActive = index === currentIndex;
-                const distance = Math.abs(index - currentIndex);
-                const isVisible = distance <= 2;
-
-                if (!isVisible) return null;
-
-                return (
-                  <motion.div
-                    key={group.id}
-                    initial={{ opacity: 0, y: 100, scale: 0.8 }}
-                    animate={{ 
-                      opacity: isActive ? 1 : 0.3,
-                      y: (index - currentIndex) * 80,
-                      scale: isActive ? 1.2 : 0.9,
-                    }}
-                    exit={{ opacity: 0, y: -100, scale: 0.8 }}
-                    transition={{ 
-                      duration: isSlowing ? 0.3 : 0.1,
-                      ease: isSlowing ? "easeOut" : "linear"
-                    }}
-                    className={`absolute text-center ${
-                      isActive ? 'z-10' : 'z-0'
-                    }`}
-                  >
-                    <div className={`text-6xl font-playfair text-white mb-2 ${
-                      isActive ? 'text-[#d4af37]' : 'text-gray-600'
-                    }`}>
-                      {group.name}
-                    </div>
-                    <div className={`text-2xl font-cinzel ${
-                      isActive ? 'text-[#d4af37]' : 'text-gray-500'
-                    }`}>
-                      Score: {group.score}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+        {/* Countdown */}
+        <div className="mb-12">
+          <div className="text-9xl font-cinzel text-[#d4af37] mb-4 gold-glow">
+            {countdown}
           </div>
+          <p className="text-gray-400 font-cinzel text-xl tracking-widest">
+            Selecting randomly...
+          </p>
         </div>
 
-        {/* Selected group highlight */}
-        {selectedGroup && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-8"
-          >
-            <div className="text-4xl font-cinzel text-yellow-400 mb-4 tracking-wider">
-              {isWinnerSelection ? 'WINNER SELECTED' : 'SELECTED'}
+        {/* Tied groups list */}
+        <div className="mb-8 space-y-4">
+          {tiedGroups.map((group) => (
+            <div
+              key={group.id}
+              className="text-3xl font-playfair text-white"
+            >
+              {group.name} - Score: {group.score}
             </div>
-            <div className="text-5xl font-playfair text-white">
-              {selectedGroup.name}
-            </div>
-          </motion.div>
-        )}
+          ))}
+        </div>
       </div>
 
       {/* Dramatic scanline effect */}
