@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Group } from '../types';
 
@@ -12,53 +12,66 @@ const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tie
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSlowing, setIsSlowing] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const hasSelected = useRef(false);
 
   useEffect(() => {
     if (tiedGroups.length === 0) return;
+    if (hasSelected.current) return; // Prevent multiple selections
 
     let interval: NodeJS.Timeout;
     let timeout: NodeJS.Timeout;
+    const startTime = Date.now();
+    const totalDuration = 5000; // 5 seconds total
+    const fastPhaseDuration = 3500; // Fast scrolling for 3.5 seconds
+    let currentSpeed = 50; // Start very fast
+    let slowingSet = false;
 
-    const startSelection = () => {
-      let speed = 50; // Start fast
-      let iterations = 0;
-      const maxIterations = 20 + Math.floor(Math.random() * 10); // Random stopping point
+    const cycle = () => {
+      const elapsed = Date.now() - startTime;
+      
+      setCurrentIndex(prev => (prev + 1) % tiedGroups.length);
 
-      const cycle = () => {
-        setCurrentIndex(prev => (prev + 1) % tiedGroups.length);
-        iterations++;
+      if (elapsed >= fastPhaseDuration && !slowingSet) {
+        // Start slowing down after 3.5 seconds
+        setIsSlowing(true);
+        slowingSet = true;
+        currentSpeed = 200; // Slower speed
+      }
 
-        if (iterations > maxIterations * 0.7) {
-          // Start slowing down
-          setIsSlowing(true);
-          speed = Math.min(speed * 1.3, 300);
-        }
-
-        if (iterations < maxIterations) {
-          interval = setTimeout(cycle, speed);
-        } else {
-          // Final selection
-          const finalIndex = Math.floor(Math.random() * tiedGroups.length);
-          setCurrentIndex(finalIndex);
-          setSelectedGroup(tiedGroups[finalIndex]);
-          
-          // Wait a bit then call onSelect (show selected for 2 seconds)
-          timeout = setTimeout(() => {
-            onSelect(tiedGroups[finalIndex]);
-          }, 2500);
-        }
-      };
-
-      cycle();
+      if (elapsed < totalDuration) {
+        // Continue cycling
+        interval = setTimeout(cycle, currentSpeed);
+      } else {
+        // Time's up - make final selection immediately
+        clearTimeout(interval);
+        hasSelected.current = true;
+        const finalIndex = Math.floor(Math.random() * tiedGroups.length);
+        setCurrentIndex(finalIndex);
+        setSelectedGroup(tiedGroups[finalIndex]);
+        
+        // Wait 1 second to show selection, then call onSelect
+        timeout = setTimeout(() => {
+          onSelect(tiedGroups[finalIndex]);
+        }, 1000);
+      }
     };
 
-    // Start after a brief delay
-    const startTimeout = setTimeout(startSelection, 500);
+    // Start immediately
+    cycle();
+
+    // Safety timeout - ensure onSelect is called after max 6.5 seconds
+    const safetyTimeout = setTimeout(() => {
+      if (!hasSelected.current && tiedGroups.length > 0) {
+        hasSelected.current = true;
+        const finalIndex = Math.floor(Math.random() * tiedGroups.length);
+        onSelect(tiedGroups[finalIndex]);
+      }
+    }, 6500);
 
     return () => {
-      clearTimeout(startTimeout);
       if (interval) clearTimeout(interval);
       if (timeout) clearTimeout(timeout);
+      clearTimeout(safetyTimeout);
     };
   }, [tiedGroups, onSelect]);
 
