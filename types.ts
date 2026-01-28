@@ -55,4 +55,5 @@ export interface GameState {
   tieBreakerIndex: number; // Current tie-breaker question index
   isRandomElimination: boolean; // Flag for random elimination message
   tiedGroupIds: number[]; // IDs of groups that are tied and participating in tie-breaker
+  isWinnerTieBreaker: boolean; // Flag to indicate if tie-breaker is for determining winner (not elimination)
 }

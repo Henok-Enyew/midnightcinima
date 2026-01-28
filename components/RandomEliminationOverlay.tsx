@@ -5,9 +5,10 @@ import { Group } from '../types';
 interface RandomEliminationOverlayProps {
   tiedGroups: Group[];
   onSelect: (selectedGroup: Group) => void;
+  isWinnerSelection?: boolean;
 }
 
-const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tiedGroups, onSelect }) => {
+const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tiedGroups, onSelect, isWinnerSelection = false }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSlowing, setIsSlowing] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
@@ -84,7 +85,7 @@ const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tie
           className="mb-8"
         >
           <h2 className="text-gray-400 font-cinzel text-2xl tracking-[0.5em] mb-4 uppercase">
-            Out of Questions - Random Selection
+            {isWinnerSelection ? 'Out of Questions - Random Winner Selection' : 'Out of Questions - Random Selection'}
           </h2>
           <div className="h-1 w-32 bg-[#d4af37] mx-auto"></div>
         </motion.div>
@@ -143,7 +144,7 @@ const RandomEliminationOverlay: React.FC<RandomEliminationOverlayProps> = ({ tie
             className="mt-8"
           >
             <div className="text-4xl font-cinzel text-yellow-400 mb-4 tracking-wider">
-              SELECTED
+              {isWinnerSelection ? 'WINNER SELECTED' : 'SELECTED'}
             </div>
             <div className="text-5xl font-playfair text-white">
               {selectedGroup.name}
