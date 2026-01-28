@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Midnight Cinema Game Show</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Sans+Ethiopic:wght@100..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #05070a;
+      color: #e2e8f0;
+      font-family: 'Noto Sans Ethiopic', sans-serif;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .font-cinzel { font-family: 'Cinzel', serif; }
+    .font-playfair { font-family: 'Playfair Display', serif; }
+    .gold-glow { text-shadow: 0 0 10px rgba(212, 175, 55, 0.5), 0 0 20px rgba(212, 175, 55, 0.3); }
+    .gold-border { border: 1px solid rgba(212, 175, 55, 0.3); }
+    .blue-glow { box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); }
+    .curtain-gradient {
+      background: linear-gradient(to bottom, #05070a 0%, #1a1e2e 100%);
+    }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+    }
+    .pulse-danger {
+      animation: pulse-red 2s infinite;
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "framer-motion": "https://esm.sh/framer-motion@^12.29.2",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

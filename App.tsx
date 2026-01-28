@@ -1,0 +1,565 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GamePhase, GameState, Group, GameRound, QuestionsData, RoundData, Question } from './types';
+import { INITIAL_TIMER } from './constants';
+import SetupScreen from './components/SetupScreen';
+import GameBoard from './components/GameBoard';
+import Scoreboard from './components/Scoreboard';
+import EliminationOverlay from './components/EliminationOverlay';
+import RandomEliminationOverlay from './components/RandomEliminationOverlay';
+import WinnerScreen from './components/WinnerScreen';
+import questionsData from './questions.json';
+
+const QUESTIONS: QuestionsData = questionsData as QuestionsData;
+
+const App: React.FC = () => {
+  const [gameState, setGameState] = useState<GameState>({
+    phase: GamePhase.SETUP,
+    groups: [],
+    currentRound: GameRound.ROUND_1,
+    currentGroupIndex: 0,
+    currentQuestionIndex: 0,
+    questionsAnswered: 0,
+    timer: INITIAL_TIMER,
+    isTimerActive: false,
+    isQuestionResolved: false,
+    lastEliminatedGroupId: null,
+    lastDecision: null,
+    tieBreakerQuestions: [],
+    tieBreakerIndex: 0,
+    isRandomElimination: false,
+    tiedGroupIds: [],
+  });
+
+  // Get current round data
+  const getCurrentRoundData = (round: GameRound): RoundData => {
+    switch (round) {
+      case GameRound.ROUND_1:
+        return QUESTIONS.round1;
+      case GameRound.ROUND_2:
+        return QUESTIONS.round2;
+      case GameRound.ROUND_3:
+        return QUESTIONS.round3;
+      default:
+        return QUESTIONS.round1;
+    }
+  };
+
+  // Get questions for current round
+  const getCurrentQuestions = (round: GameRound): Question[] => {
+    return getCurrentRoundData(round).questions;
+  };
+
+  // Get current question
+  const getCurrentQuestion = (state?: GameState): Question | null => {
+    const stateToUse = state || gameState;
+    if (stateToUse.phase === GamePhase.TIE_BREAKER) {
+      if (stateToUse.tieBreakerQuestions.length > 0 && stateToUse.tieBreakerIndex < stateToUse.tieBreakerQuestions.length) {
+        return stateToUse.tieBreakerQuestions[stateToUse.tieBreakerIndex];
+      }
+      return null;
+    }
+    const questions = getCurrentQuestions(stateToUse.currentRound);
+    // Cycle through questions based on questions answered
+    const questionIndex = stateToUse.questionsAnswered % questions.length;
+    return questions[questionIndex];
+  };
+
+  // Get total questions per round
+  const getTotalQuestionsForRound = (round: GameRound): number => {
+    switch (round) {
+      case GameRound.ROUND_1:
+        return 12; // 4 groups × 3 questions
+      case GameRound.ROUND_2:
+        return 9; // 3 groups × 3 questions
+      case GameRound.ROUND_3:
+        return 6; // 2 groups × 3 questions
+      default:
+        return 12;
+    }
+  };
+
+  const handleStartGame = (groupNames: string[]) => {
+      const initialGroups: Group[] = groupNames.map((name, index) => ({
+      id: index,
+      name,
+      score: 0,
+      isEliminated: false,
+    }));
+    setGameState(prev => ({
+      ...prev,
+      groups: initialGroups,
+      phase: GamePhase.PLAYING,
+      currentRound: GameRound.ROUND_1,
+      currentGroupIndex: 0,
+      currentQuestionIndex: 0,
+      questionsAnswered: 0,
+      timer: INITIAL_TIMER,
+      isTimerActive: true, // Timer starts automatically
+      isQuestionResolved: false,
+      lastDecision: null,
+    }));
+  };
+
+  const handleDecision = useCallback((type: 'correct' | 'incorrect' | 'timeout') => {
+    setGameState(prev => {
+      if (prev.isQuestionResolved) return prev;
+
+      const newGroups = [...prev.groups];
+      const currentQuestion = getCurrentQuestion(prev);
+      
+      if (!currentQuestion) return prev;
+
+      // Add points for correct answer
+      if (type === 'correct') {
+        newGroups[prev.currentGroupIndex].score += currentQuestion.points;
+      }
+
+      // Check if tie is broken during tie-breaker
+      if (prev.phase === GamePhase.TIE_BREAKER && prev.tiedGroupIds.length > 0) {
+        const tiedGroups = newGroups.filter(g => prev.tiedGroupIds.includes(g.id) && !g.isEliminated);
+        if (tiedGroups.length > 1) {
+          const lowestScore = Math.min(...tiedGroups.map(g => g.score));
+          const candidates = tiedGroups.filter(g => g.score === lowestScore);
+          
+          if (candidates.length === 1) {
+            // Tie broken - eliminate the lowest
+            const newGroupsWithElimination = newGroups.map(g => 
+              g.id === candidates[0].id ? { ...g, isEliminated: true } : g
+            );
+            return {
+              ...prev,
+              groups: newGroupsWithElimination,
+              isTimerActive: false,
+              isQuestionResolved: true,
+              lastDecision: type,
+              phase: GamePhase.ELIMINATION,
+              lastEliminatedGroupId: candidates[0].id,
+              tiedGroupIds: [],
+            };
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        groups: newGroups,
+        isTimerActive: false,
+        isQuestionResolved: true,
+        lastDecision: type,
+        // Don't increment questionsAnswered here - it will be incremented when moving to next question
+      };
+    });
+  }, []);
+
+  // Auto-start timer when new question appears
+  useEffect(() => {
+    if ((gameState.phase === GamePhase.PLAYING || gameState.phase === GamePhase.TIE_BREAKER) && 
+        !gameState.isQuestionResolved && 
+        !gameState.isTimerActive && 
+        gameState.timer === INITIAL_TIMER) {
+      setGameState(prev => ({ ...prev, isTimerActive: true }));
+    }
+  }, [gameState.phase, gameState.isQuestionResolved, gameState.currentQuestionIndex, gameState.tieBreakerIndex]);
+
+  // Timer effect
+  useEffect(() => {
+    let interval: any;
+    if (gameState.isTimerActive && gameState.timer > 0 && !gameState.isQuestionResolved) {
+      interval = setInterval(() => {
+        setGameState(prev => ({ ...prev, timer: prev.timer - 1 }));
+      }, 1000);
+    } else if (gameState.timer === 0 && gameState.isTimerActive && !gameState.isQuestionResolved) {
+      handleDecision('timeout');
+    }
+    return () => clearInterval(interval);
+  }, [gameState.isTimerActive, gameState.timer, gameState.isQuestionResolved, handleDecision]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (gameState.phase !== GamePhase.PLAYING && gameState.phase !== GamePhase.TIE_BREAKER) return;
+      if (gameState.isQuestionResolved) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        // Toggle timer
+        setGameState(prev => ({
+          ...prev,
+          isTimerActive: !prev.isTimerActive,
+        }));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleDecision('correct');
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleDecision('incorrect');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [gameState.phase, gameState.isQuestionResolved, handleDecision]);
+
+  // Check if round is complete
+  const isRoundComplete = (round: GameRound, questionsAnswered: number): boolean => {
+    return questionsAnswered >= getTotalQuestionsForRound(round);
+  };
+
+  // Handle elimination at end of round
+  const handleRoundEndElimination = (groups: Group[], round: GameRound): { groups: Group[], eliminatedId: number | null, phase: GamePhase, tieBreakerQuestions: Question[], tieBreakerIndex: number, isRandomElimination: boolean, tiedGroupIds: number[] } => {
+    const activeGroups = groups.filter(g => !g.isEliminated);
+    
+    if (activeGroups.length <= 1) {
+      return { groups, eliminatedId: null, phase: GamePhase.WINNER, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [] };
+    }
+
+    const lowestScore = Math.min(...activeGroups.map(g => g.score));
+    const candidates = activeGroups.filter(g => g.score === lowestScore);
+
+    if (candidates.length === 1) {
+      // Single lowest score - eliminate
+      const newGroups = groups.map(g => 
+        g.id === candidates[0].id ? { ...g, isEliminated: true } : g
+      );
+      return { groups: newGroups, eliminatedId: candidates[0].id, phase: GamePhase.ELIMINATION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [] };
+    } else {
+      // Tie - start sudden death - only tied groups participate
+      const roundData = getCurrentRoundData(round);
+      const reserveQuestions = [...roundData.reserves];
+      const tiedIds = candidates.map(c => c.id);
+      
+      return { groups, eliminatedId: null, phase: GamePhase.TIE_BREAKER, tieBreakerQuestions: reserveQuestions, tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: tiedIds };
+    }
+  };
+
+  // Handle tie-breaker next
+  const handleTieBreakerNext = (groups: Group[], tieBreakerIndex: number, tieBreakerQuestions: Question[], tiedGroupIds: number[]): { groups: Group[], eliminatedId: number | null, phase: GamePhase, tieBreakerQuestions: Question[], tieBreakerIndex: number, isRandomElimination: boolean, tiedGroupIds: number[] } => {
+    // Only consider tied groups for elimination
+    const tiedGroups = groups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
+    
+    if (tiedGroups.length <= 1) {
+      return { groups, eliminatedId: null, phase: GamePhase.WINNER, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [] };
+    }
+
+    const lowestScore = Math.min(...tiedGroups.map(g => g.score));
+    const candidates = tiedGroups.filter(g => g.score === lowestScore);
+
+    if (candidates.length === 1) {
+      // Single lowest score - eliminate
+      const newGroups = groups.map(g => 
+        g.id === candidates[0].id ? { ...g, isEliminated: true } : g
+      );
+      return { groups: newGroups, eliminatedId: candidates[0].id, phase: GamePhase.ELIMINATION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds: [] };
+    } else if (tieBreakerIndex < tieBreakerQuestions.length - 1) {
+      // More reserve questions available - continue tie-breaker
+      return { groups, eliminatedId: null, phase: GamePhase.TIE_BREAKER, tieBreakerQuestions, tieBreakerIndex: tieBreakerIndex + 1, isRandomElimination: false, tiedGroupIds };
+    } else {
+      // No more reserve questions - trigger random selection animation
+      return { groups, eliminatedId: null, phase: GamePhase.RANDOM_SELECTION, tieBreakerQuestions: [], tieBreakerIndex: 0, isRandomElimination: false, tiedGroupIds };
+    }
+  };
+
+  const handleNextTurn = () => {
+    setGameState(prev => {
+      const newGroups = [...prev.groups];
+      let nextPhase = prev.phase;
+      let nextRound = prev.currentRound;
+      let nextGroupIndex = prev.currentGroupIndex;
+      let nextQuestionIndex = prev.currentQuestionIndex;
+      let questionsAnswered = prev.questionsAnswered;
+      let lastEliminatedId = prev.lastEliminatedGroupId;
+      let tieBreakerQuestions = prev.tieBreakerQuestions;
+      let tieBreakerIndex = prev.tieBreakerIndex;
+      let isRandomElimination = prev.isRandomElimination;
+      let tiedGroupIds = prev.tiedGroupIds;
+
+      if (prev.phase === GamePhase.TIE_BREAKER) {
+        // Handle tie-breaker flow - only consider tied groups
+        const result = handleTieBreakerNext(newGroups, prev.tieBreakerIndex, prev.tieBreakerQuestions, prev.tiedGroupIds);
+        newGroups.splice(0, newGroups.length, ...result.groups);
+        nextPhase = result.phase;
+        lastEliminatedId = result.eliminatedId;
+        tieBreakerQuestions = result.tieBreakerQuestions;
+        tieBreakerIndex = result.tieBreakerIndex;
+        isRandomElimination = result.isRandomElimination;
+        tiedGroupIds = result.tiedGroupIds;
+
+        if (nextPhase === GamePhase.ELIMINATION) {
+          return {
+            ...prev,
+            groups: newGroups,
+            phase: nextPhase,
+            lastEliminatedGroupId: lastEliminatedId,
+            isRandomElimination,
+            tieBreakerQuestions: [],
+            tieBreakerIndex: 0,
+            tiedGroupIds: [],
+          };
+        }
+
+        // Continue tie-breaker - rotate only between tied groups
+        const tiedGroups = newGroups.filter(g => tiedGroupIds.includes(g.id) && !g.isEliminated);
+        
+        // Rotate between tied groups only
+        const currentTiedIndex = tiedGroups.findIndex(g => g.id === prev.currentGroupIndex);
+        const nextTiedIndex = (currentTiedIndex + 1) % tiedGroups.length;
+        nextGroupIndex = tiedGroups[nextTiedIndex].id;
+      } else {
+        // Normal flow - increment questionsAnswered when moving to next question
+        questionsAnswered = prev.questionsAnswered + 1;
+
+        // Check if round is complete
+        if (isRoundComplete(prev.currentRound, questionsAnswered)) {
+          const result = handleRoundEndElimination(newGroups, prev.currentRound);
+          newGroups.splice(0, newGroups.length, ...result.groups);
+          nextPhase = result.phase;
+          lastEliminatedId = result.eliminatedId;
+          tieBreakerQuestions = result.tieBreakerQuestions;
+          tieBreakerIndex = result.tieBreakerIndex;
+          tiedGroupIds = result.tiedGroupIds;
+
+          if (nextPhase === GamePhase.ELIMINATION || nextPhase === GamePhase.WINNER) {
+            return {
+              ...prev,
+              groups: newGroups,
+              phase: nextPhase,
+              lastEliminatedGroupId: lastEliminatedId,
+              questionsAnswered,
+              tieBreakerQuestions,
+              tieBreakerIndex,
+              tiedGroupIds,
+            };
+          }
+
+          // Move to next round
+          if (prev.currentRound === GameRound.ROUND_1) {
+            nextRound = GameRound.ROUND_2;
+            nextQuestionIndex = 0;
+            questionsAnswered = 0;
+          } else if (prev.currentRound === GameRound.ROUND_2) {
+            nextRound = GameRound.ROUND_3;
+            nextQuestionIndex = 0;
+            questionsAnswered = 0;
+          }
+
+      // Find first active group for next round
+      const activeGroups = newGroups.filter(g => !g.isEliminated);
+      if (activeGroups.length > 0) {
+        nextGroupIndex = activeGroups[0].id;
+        nextQuestionIndex = 0; // Start from first question of new round
+      }
+        } else {
+          // Continue current round - find next active group (round-robin)
+          const activeGroups = newGroups.filter(g => !g.isEliminated);
+          const currentActiveIndex = activeGroups.findIndex(g => g.id === prev.currentGroupIndex);
+          const nextActiveIndex = (currentActiveIndex + 1) % activeGroups.length;
+          nextGroupIndex = activeGroups[nextActiveIndex].id;
+          
+          // Question index cycles through questions array
+          const questions = getCurrentQuestions(prev.currentRound);
+          nextQuestionIndex = questionsAnswered % questions.length;
+        }
+      }
+
+      // Check for final winner
+      const activeGroups = newGroups.filter(g => !g.isEliminated);
+      if (activeGroups.length === 1) {
+        nextPhase = GamePhase.WINNER;
+      }
+
+      return {
+        ...prev,
+        groups: newGroups,
+        phase: nextPhase,
+        currentRound: nextRound,
+        currentGroupIndex: nextGroupIndex,
+        currentQuestionIndex: nextQuestionIndex,
+        questionsAnswered,
+        timer: INITIAL_TIMER,
+        isTimerActive: true, // Timer starts automatically
+        isQuestionResolved: false,
+        lastEliminatedGroupId: lastEliminatedId,
+        lastDecision: null,
+        tieBreakerQuestions,
+        tieBreakerIndex,
+        isRandomElimination,
+        tiedGroupIds,
+      };
+    });
+  };
+
+  const resumeFromElimination = () => {
+    setGameState(prev => {
+      const activeGroups = prev.groups.filter(g => !g.isEliminated);
+      
+      if (activeGroups.length === 1) {
+        return {
+          ...prev,
+          phase: GamePhase.WINNER,
+        };
+      }
+
+      // Check if we need to move to next round
+      let nextRound = prev.currentRound;
+      let nextQuestionIndex = prev.currentQuestionIndex;
+      let questionsAnswered = prev.questionsAnswered;
+
+      if (prev.currentRound === GameRound.ROUND_1 && activeGroups.length === 3) {
+        // Move to Round 2
+        nextRound = GameRound.ROUND_2;
+        nextQuestionIndex = 0;
+        questionsAnswered = 0;
+      } else if (prev.currentRound === GameRound.ROUND_2 && activeGroups.length === 2) {
+        // Move to Round 3
+        nextRound = GameRound.ROUND_3;
+        nextQuestionIndex = 0;
+        questionsAnswered = 0;
+      }
+
+      // Find first active group
+      const firstActiveGroup = activeGroups[0];
+      nextQuestionIndex = 0; // Start from first question of new round
+
+      return {
+        ...prev,
+        phase: GamePhase.PLAYING,
+        currentRound: nextRound,
+        currentGroupIndex: firstActiveGroup.id,
+        currentQuestionIndex: nextQuestionIndex,
+        questionsAnswered,
+        timer: INITIAL_TIMER,
+        isTimerActive: true, // Timer starts automatically
+        isRandomElimination: false,
+      };
+    });
+  };
+
+  const resetGame = () => {
+    setGameState({
+      phase: GamePhase.SETUP,
+      groups: [],
+      currentRound: GameRound.ROUND_1,
+      currentGroupIndex: 0,
+      currentQuestionIndex: 0,
+      questionsAnswered: 0,
+      timer: INITIAL_TIMER,
+      isTimerActive: false,
+      isQuestionResolved: false,
+      lastEliminatedGroupId: null,
+      lastDecision: null,
+      tieBreakerQuestions: [],
+      tieBreakerIndex: 0,
+      isRandomElimination: false,
+      tiedGroupIds: [],
+    });
+  };
+
+  const currentQuestion = getCurrentQuestion();
+  const currentRoundData = getCurrentRoundData(gameState.currentRound);
+
+  return (
+    <div className="relative min-h-screen curtain-gradient flex flex-col overflow-y-auto">
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+      
+      <AnimatePresence mode="wait">
+        {gameState.phase === GamePhase.SETUP && (
+          <SetupScreen onStart={handleStartGame} />
+        )}
+
+        {(gameState.phase === GamePhase.PLAYING || gameState.phase === GamePhase.TIE_BREAKER) && currentQuestion && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col p-8 space-y-8 min-h-0"
+          >
+            <div className="flex justify-between items-center border-b border-[#d4af37]/30 pb-4">
+              <div className="flex items-center gap-4">
+                <div className="w-4 h-4 rounded-full bg-[#d4af37] shadow-[0_0_10px_#d4af37]"></div>
+                <h2 className="text-2xl font-cinzel text-[#d4af37] tracking-widest uppercase">
+                  {gameState.phase === GamePhase.TIE_BREAKER ? 'Sudden Death' : `${gameState.groups[gameState.currentGroupIndex]?.name}'s Turn`}
+                </h2>
+                <span className="text-sm text-gray-400 font-cinzel">
+                  Round {gameState.currentRound} - {currentRoundData.name}
+                </span>
+              </div>
+              <div className="text-gray-400 font-cinzel tracking-wider">
+                {gameState.phase === GamePhase.TIE_BREAKER 
+                  ? `TIE-BREAKER ${gameState.tieBreakerIndex + 1}`
+                  : `QUESTION ${gameState.questionsAnswered + 1} / ${getTotalQuestionsForRound(gameState.currentRound)}`}
+              </div>
+            </div>
+
+            {gameState.isRandomElimination && (
+              <div className="bg-yellow-900/30 border border-yellow-500/50 rounded-lg p-4 text-center">
+                <p className="text-yellow-500 font-cinzel text-lg">Randomly selected for elimination.</p>
+              </div>
+            )}
+
+            <div className="flex-1 grid grid-cols-12 gap-8 items-start min-h-0">
+              <div className="col-span-12 lg:col-span-9">
+                <GameBoard 
+                    question={currentQuestion}
+                    onDecision={handleDecision}
+                    onNext={handleNextTurn}
+                    timer={gameState.timer}
+                    isResolved={gameState.isQuestionResolved}
+                    lastDecision={gameState.lastDecision}
+                    isTieBreaker={gameState.phase === GamePhase.TIE_BREAKER}
+                />
+              </div>
+
+              <div className="col-span-12 lg:col-span-3">
+                <Scoreboard 
+                    groups={gameState.groups} 
+                    currentGroupIndex={gameState.currentGroupIndex}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {gameState.phase === GamePhase.ELIMINATION && gameState.lastEliminatedGroupId !== null && (
+          <EliminationOverlay 
+            group={gameState.groups[gameState.lastEliminatedGroupId]} 
+            onComplete={resumeFromElimination}
+            isRandomElimination={gameState.isRandomElimination}
+          />
+        )}
+
+        {gameState.phase === GamePhase.RANDOM_SELECTION && (
+          <RandomEliminationOverlay
+            tiedGroups={gameState.groups.filter(g => gameState.tiedGroupIds.includes(g.id) && !g.isEliminated)}
+            onSelect={(selectedGroup) => {
+              setGameState(prev => {
+                const newGroups = prev.groups.map(g => 
+                  g.id === selectedGroup.id ? { ...g, isEliminated: true } : g
+                );
+                return {
+                  ...prev,
+                  groups: newGroups,
+                  phase: GamePhase.ELIMINATION,
+                  lastEliminatedGroupId: selectedGroup.id,
+                  isRandomElimination: true,
+                  tiedGroupIds: [],
+                };
+              });
+            }}
+          />
+        )}
+
+        {gameState.phase === GamePhase.WINNER && (
+          <WinnerScreen 
+            winner={gameState.groups.find(g => !g.isEliminated)!} 
+            onRestart={resetGame}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="absolute bottom-0 w-full h-1 bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent"></div>
+    </div>
+  );
+};
+
+export default App;
