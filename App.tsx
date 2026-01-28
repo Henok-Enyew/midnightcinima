@@ -61,8 +61,9 @@ const App: React.FC = () => {
       return null;
     }
     const questions = getCurrentQuestions(stateToUse.currentRound);
+    if (questions.length === 0) return null;
     // Use currentQuestionIndex to get the question
-    if (stateToUse.currentQuestionIndex < questions.length) {
+    if (stateToUse.currentQuestionIndex >= 0 && stateToUse.currentQuestionIndex < questions.length) {
       return questions[stateToUse.currentQuestionIndex];
     }
     return null;
@@ -570,6 +571,8 @@ const App: React.FC = () => {
         questionsAnswered,
         timer: INITIAL_TIMER,
         isTimerActive: true, // Timer starts automatically
+        isQuestionResolved: false, // Reset question resolved state for new round
+        lastDecision: null, // Reset last decision
         isRandomElimination: false,
       };
     });
