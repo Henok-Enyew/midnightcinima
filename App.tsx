@@ -385,39 +385,9 @@ const App: React.FC = () => {
 
         // Check if round is complete
         if (isRoundComplete(prev.currentRound, questionsAnswered)) {
-          const result = handleRoundEndElimination(newGroups, prev.currentRound);
-          newGroups.splice(0, newGroups.length, ...result.groups);
-          nextPhase = result.phase;
-          lastEliminatedId = result.eliminatedId;
-          tieBreakerQuestions = result.tieBreakerQuestions;
-          tieBreakerIndex = result.tieBreakerIndex;
-          tiedGroupIds = result.tiedGroupIds;
-
-          if (nextPhase === GamePhase.ELIMINATION || nextPhase === GamePhase.WINNER) {
-            return {
-              ...prev,
-              groups: newGroups,
-              phase: nextPhase,
-              lastEliminatedGroupId: lastEliminatedId,
-              questionsAnswered,
-              tieBreakerQuestions,
-              tieBreakerIndex,
-              tiedGroupIds,
-              isWinnerTieBreaker: result.isWinnerTieBreaker,
-            };
-          }
-
-          // Move to next round or determine winner
-          if (prev.currentRound === GameRound.ROUND_1) {
-            nextRound = GameRound.ROUND_2;
-            nextQuestionIndex = 0;
-            questionsAnswered = 0;
-          } else if (prev.currentRound === GameRound.ROUND_2) {
-            nextRound = GameRound.ROUND_3;
-            nextQuestionIndex = 0;
-            questionsAnswered = 0;
-          } else if (prev.currentRound === GameRound.ROUND_3) {
-            // Round 3 complete - determine winner (check for ties)
+          // Round 3 uses winner determination (highest score), Rounds 1-2 use elimination (lowest score)
+          if (prev.currentRound === GameRound.ROUND_3) {
+            // Round 3 complete - determine winner (check for ties in highest score)
             const winnerResult = handleWinnerDetermination(newGroups);
             newGroups.splice(0, newGroups.length, ...winnerResult.groups);
             nextPhase = winnerResult.phase;
@@ -458,6 +428,40 @@ const App: React.FC = () => {
                 isQuestionResolved: false,
                 lastDecision: null,
               };
+            }
+          } else {
+            // Round 1 or 2 - use elimination logic (lowest score)
+            const result = handleRoundEndElimination(newGroups, prev.currentRound);
+            newGroups.splice(0, newGroups.length, ...result.groups);
+            nextPhase = result.phase;
+            lastEliminatedId = result.eliminatedId;
+            tieBreakerQuestions = result.tieBreakerQuestions;
+            tieBreakerIndex = result.tieBreakerIndex;
+            tiedGroupIds = result.tiedGroupIds;
+
+            if (nextPhase === GamePhase.ELIMINATION || nextPhase === GamePhase.WINNER) {
+              return {
+                ...prev,
+                groups: newGroups,
+                phase: nextPhase,
+                lastEliminatedGroupId: lastEliminatedId,
+                questionsAnswered,
+                tieBreakerQuestions,
+                tieBreakerIndex,
+                tiedGroupIds,
+                isWinnerTieBreaker: result.isWinnerTieBreaker,
+              };
+            }
+
+            // Move to next round
+            if (prev.currentRound === GameRound.ROUND_1) {
+              nextRound = GameRound.ROUND_2;
+              nextQuestionIndex = 0;
+              questionsAnswered = 0;
+            } else if (prev.currentRound === GameRound.ROUND_2) {
+              nextRound = GameRound.ROUND_3;
+              nextQuestionIndex = 0;
+              questionsAnswered = 0;
             }
           }
 
